@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CallCenter WFM Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <header>
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                    <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                    <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                <span>WFM Pro</span>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" id="theme-toggle">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5" />
+                        <path
+                            d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <main>
+            <div class="view-tabs">
+                <button class="tab-btn active" data-target="planning-view">Kaynak Planlama</button>
+                <button class="tab-btn" data-target="dashboard-view">Geçmiş Veriler Dashboard</button>
+                <button class="tab-btn" data-target="data-entry-view">Veri Girişi</button>
+            </div>
+
+            <!-- 1. Resource Planning (Forecast) View -->
+            <div id="planning-view" class="view-section active">
+                <div class="glass-panel full-width-panel">
+                    <div class="table-header-actions">
+                        <h2>Gelecek 30 Günlük Kaynak Planı</h2>
+                        <div class="actions">
+                            <div class="input-group compact">
+                                <label style="display:inline; margin-right:5px; font-size: 0.9rem;">Hedef SL
+                                    (%):</label>
+                                <input type="number" id="forecast-sl-target" value="80"
+                                    style="width: 60px; text-align:center;">
+                            </div>
+                            <button class="btn-primary" id="generate-forecast-btn">Planı Oluştur</button>
+                        </div>
+                        <div style="font-size:0.8rem; color: var(--text-secondary);">
+                            *Tahminler geçmiş verilerin ortalamasına göre yapılır.
+                        </div>
+                    </div>
+
+                    <div class="kpi-grid" style="margin-bottom: 2rem; display:none;" id="forecast-summary">
+                        <div class="kpi-card glass-panel" style="padding: 1rem;">
+                            <h3>Toplam Tahmini Çağrı</h3>
+                            <div class="value" id="total-forecast-calls">-</div>
+                        </div>
+                        <div class="kpi-card glass-panel" style="padding: 1rem;">
+                            <h3>Ortalama Gereksinim</h3>
+                            <div class="value" id="avg-required-agents">-</div>
+                        </div>
+                    </div>
+
+                    <div class="table-container" style="max-height: 400px;">
+                        <table id="forecast-table">
+                            <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>Gün</th>
+                                    <th>Tahmini Çağrı</th>
+                                    <th>Tahmini AHT</th>
+                                    <th>Gerekli Temsilci</th>
+                                    <th>Tahmini TVE</th>
+                                </tr>
+                            </thead>
+                            <tbody id="forecast-table-body">
+                                <tr>
+                                    <td colspan="6"
+                                        style="text-align:center; padding: 2rem; color: var(--text-secondary);">
+                                        "Planı Oluştur" butonuna basarak geçmiş verilerden tahmini plan oluşturun.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="glass-panel" style="margin-top: 2rem;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:1rem;">
+                        <h3 style="color:var(--text-secondary);">Anlık Hesaplama Simülatörü</h3>
+                        <small style="color:var(--text-secondary); opacity:0.7;">Hızlı senaryo testi (24
+                            Saatlik)</small>
+                    </div>
+
+                    <div class="calculator-layout">
+                        <section class="controls-section"
+                            style="border:none; box-shadow:none; padding:0; background:transparent;">
+                            <div class="input-group">
+                                <label>Çağrı Sayısı</label>
+                                <div class="range-wrapper">
+                                    <input type="range" id="calls-range" min="0" max="200000" value="100" step="10">
+                                    <input type="number" id="calls" value="100" min="0">
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label>AHT (Sn)</label>
+                                <div class="range-wrapper">
+                                    <input type="range" id="aht-range" min="10" max="600000" value="180" step="10">
+                                    <input type="number" id="aht" value="180" min="0">
+                                </div>
+                            </div>
+                        </section>
+                        <section class="results-section" style="justify-content:center;">
+                            <div class="kpi-grid" style="grid-template-columns: 1fr 1fr;">
+                                <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 1rem;">
+                                    <h3>Gerekli Temsilci</h3>
+                                    <div class="value" id="req-agents">-</div>
+                                </div>
+                                <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 1rem;">
+                                    <h3>Tahmini SL</h3>
+                                    <div class="value" id="est-sl">-</div>
+                                </div>
+                            </div>
+                            <!-- Hidden inputs needed for JS logic to work without errors -->
+                            <div style="display:none;">
+                                <select id="interval">
+                                    <option value="1440" selected></option>
+                                </select>
+                                <input id="sl-target" value="80">
+                                <input id="sl-time" value="20">
+                                <input id="shrinkage" value="30">
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Historical Dashboard View -->
+            <div id="dashboard-view" class="view-section" style="display: none;">
+                <div class="kpi-grid" style="margin-bottom: 2rem;">
+                    <div class="kpi-card glass-panel">
+                        <h3>Ortalama Çağrı (Günlük)</h3>
+                        <div class="value" id="dash-avg-calls">-</div>
+                    </div>
+                    <div class="kpi-card glass-panel">
+                        <h3>Ortalama AHT</h3>
+                        <div class="value" id="dash-avg-aht">-</div>
+                    </div>
+                    <div class="kpi-card glass-panel">
+                        <h3>Ortalama TVE</h3>
+                        <div class="value" id="dash-avg-tve">-</div>
+                    </div>
+                    <div class="kpi-card glass-panel">
+                        <h3>Ortalama SL</h3>
+                        <div class="value" id="dash-avg-sl">-</div>
+                    </div>
+                    <div class="kpi-card glass-panel">
+                        <h3>Ortalama Temsilci</h3>
+                        <div class="value" id="dash-avg-agents">-</div>
+                    </div>
+                </div>
+                <div class="glass-panel full-width-panel"
+                    style="height: 400px; display: flex; align-items: flex-end; justify-content: center; position: relative;">
+                    <div id="history-chart-container"
+                        style="width: 100%; height: 100%; padding: 1rem; display:flex; align-items:flex-end; gap:4px;">
+                        <!-- JS Generated SVG/Divs -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Data Entry View -->
+            <div id="data-entry-view" class="view-section" style="display: none;">
+                <div class="glass-panel full-width-panel">
+                    <div class="table-header-actions">
+                        <h2>Son 1 Yıllık Veri Girişi</h2>
+                        <div class="actions">
+                            <button class="btn-secondary" id="reset-history">Temizle</button>
+                            <button class="btn-secondary" id="load-sample-data">Örnek Veri</button>
+                            <button class="btn-primary" id="save-history">Kaydet</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="history-table">
+                            <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>Gün</th>
+                                    <th>Çağrı Adedi</th>
+                                    <th>Temsilci Sayısı</th>
+                                    <th>Top. Görüşme (Sa)</th>
+                                    <th>Hizmet Seviyesi (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body">
+                                <!-- Rows will be generated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>
