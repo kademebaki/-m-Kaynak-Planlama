@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -47,7 +48,7 @@
             <div id="planning-view" class="view-section active">
                 <div class="glass-panel full-width-panel">
                     <div class="table-header-actions">
-                        <h2>Gelecek 30 Günlük Kaynak Planı</h2>
+                        <h2>Kaynak Planlama</h2>
                         <div class="actions">
                             <div class="input-group compact">
                                 <label style="display:inline; margin-right:5px; font-size: 0.9rem;">Hedef SL
@@ -64,12 +65,16 @@
 
                     <div class="kpi-grid" style="margin-bottom: 2rem; display:none;" id="forecast-summary">
                         <div class="kpi-card glass-panel" style="padding: 1rem;">
-                            <h3>Toplam Tahmini Çağrı</h3>
+                            <h3>Ortalama Aylık Çağrı</h3>
                             <div class="value" id="total-forecast-calls">-</div>
                         </div>
                         <div class="kpi-card glass-panel" style="padding: 1rem;">
                             <h3>Ortalama Gereksinim</h3>
                             <div class="value" id="avg-required-agents">-</div>
+                        </div>
+                        <div class="kpi-card glass-panel" style="padding: 1rem;">
+                            <h3 title="%100-%105 Arası Gerçekleşen Günler">Tam İsab. Gün (100-105%)</h3>
+                            <div class="value" id="perfect-accuracy-days">-</div>
                         </div>
                     </div>
 
@@ -80,9 +85,12 @@
                                     <th>Tarih</th>
                                     <th>Gün</th>
                                     <th>Tahmini Çağrı</th>
-                                    <th>Tahmini AHT</th>
+                                    <th>Gerçekleşen Çağrı</th>
                                     <th>Gerekli Temsilci</th>
-                                    <th>Tahmini TVE</th>
+                                    <th>Gerçekleşen Temsilci</th>
+                                    <th>Temsilci Farkı</th>
+                                    <th>Karşılama Oranı (%)</th>
+                                    <th>Gerçekleşen SL (%)</th>
                                 </tr>
                             </thead>
                             <tbody id="forecast-table-body">
@@ -97,54 +105,32 @@
                     </div>
                 </div>
 
-                <div class="glass-panel" style="margin-top: 2rem;">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:1rem;">
-                        <h3 style="color:var(--text-secondary);">Anlık Hesaplama Simülatörü</h3>
-                        <small style="color:var(--text-secondary); opacity:0.7;">Hızlı senaryo testi (24
-                            Saatlik)</small>
-                    </div>
-
-                    <div class="calculator-layout">
-                        <section class="controls-section"
-                            style="border:none; box-shadow:none; padding:0; background:transparent;">
-                            <div class="input-group">
-                                <label>Çağrı Sayısı</label>
-                                <div class="range-wrapper">
-                                    <input type="range" id="calls-range" min="0" max="200000" value="100" step="10">
-                                    <input type="number" id="calls" value="100" min="0">
-                                </div>
-                            </div>
-                            <div class="input-group">
-                                <label>AHT (Sn)</label>
-                                <div class="range-wrapper">
-                                    <input type="range" id="aht-range" min="10" max="600000" value="180" step="10">
-                                    <input type="number" id="aht" value="180" min="0">
-                                </div>
-                            </div>
-                        </section>
-                        <section class="results-section" style="justify-content:center;">
-                            <div class="kpi-grid" style="grid-template-columns: 1fr 1fr;">
-                                <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 1rem;">
-                                    <h3>Gerekli Temsilci</h3>
-                                    <div class="value" id="req-agents">-</div>
-                                </div>
-                                <div class="kpi-card" style="background: rgba(255,255,255,0.05); padding: 1rem;">
-                                    <h3>Tahmini SL</h3>
-                                    <div class="value" id="est-sl">-</div>
-                                </div>
-                            </div>
-                            <!-- Hidden inputs needed for JS logic to work without errors -->
-                            <div style="display:none;">
-                                <select id="interval">
-                                    <option value="1440" selected></option>
-                                </select>
-                                <input id="sl-target" value="80">
-                                <input id="sl-time" value="20">
-                                <input id="shrinkage" value="30">
-                            </div>
-                        </section>
+                <!-- Recommendation Section -->
+                <div class="glass-panel full-width-panel" style="margin-top: 2rem; padding: 1.5rem;">
+                    <h3>Optimizasyon & Münakale Önerileri</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                        Geçmiş verilerinize dayanarak, ayın belirli günleri için tespit edilen sapmalar ve öneriler.
+                    </p>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Gün</th>
+                                    <th>Durum</th>
+                                    <th>Ort. Temsilci</th>
+                                    <th>Ort. Temsilci Farkı</th>
+                                    <th>Ort. SL (%)</th>
+                                    <th>Öneri</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recommendation-table-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
+
+
             </div>
 
             <!-- 2. Historical Dashboard View -->
@@ -171,12 +157,105 @@
                         <div class="value" id="dash-avg-agents">-</div>
                     </div>
                 </div>
-                <div class="glass-panel full-width-panel"
-                    style="height: 400px; display: flex; align-items: flex-end; justify-content: center; position: relative;">
-                    <div id="history-chart-container"
-                        style="width: 100%; height: 100%; padding: 1rem; display:flex; align-items:flex-end; gap:4px;">
-                        <!-- JS Generated SVG/Divs -->
+
+                <!-- Weekly Breakdown -->
+                <div class="glass-panel full-width-panel" style="padding: 1rem; margin-bottom: 2rem;">
+                    <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--text-secondary);">Haftalık Çağrı
+                        Dağılımı (Ort.)</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                        <div class="kpi-card glass-panel" style="background: rgba(255,255,255,0.03);">
+                            <h4 style="font-size: 0.9rem; color: var(--text-secondary);">Hafta İçi</h4>
+                            <div class="value" id="dash-weekday-calls" style="font-size: 1.5rem;">-</div>
+                        </div>
+                        <div class="kpi-card glass-panel" style="background: rgba(255,255,255,0.03);">
+                            <h4 style="font-size: 0.9rem; color: var(--text-secondary);">Cumartesi</h4>
+                            <div class="value" id="dash-sat-calls" style="font-size: 1.5rem;">-</div>
+                        </div>
+                        <div class="kpi-card glass-panel" style="background: rgba(255,255,255,0.03);">
+                            <h4 style="font-size: 0.9rem; color: var(--text-secondary);">Pazar</h4>
+                            <div class="value" id="dash-sun-calls" style="font-size: 1.5rem;">-</div>
+                        </div>
                     </div>
+                </div>
+
+                <div class="charts-wrapper" style="display: flex; flex-direction: column; gap: 2rem;">
+
+                    <!-- Chart 1: Calls -->
+                    <div class="glass-panel full-width-panel" style="padding: 1.5rem;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:1rem;">
+                            <h3>Çağrı Hacmi Trendi</h3>
+                            <span class="chart-legend" style="font-size:0.8rem; color:var(--text-secondary);">Son 30
+                                Gün</span>
+                        </div>
+                        <div class="chart-layout" style="display:flex; height: 300px;">
+                            <div class="y-axis" id="y-axis-calls"
+                                style="width: 50px; display:flex; flex-direction:column; justify-content:space-between; text-align:right; padding-right:10px; font-size:0.8rem; color:var(--text-secondary); border-right:1px solid rgba(255,255,255,0.1);">
+                                <!-- Generated by JS -->
+                            </div>
+                            <div class="x-chart-area" style="flex:1; display:flex; flex-direction:column;">
+                                <div id="chart-calls"
+                                    style="flex:1; display:flex; align-items:flex-end; gap:4px; padding-left:10px;">
+                                    <!-- Bars -->
+                                </div>
+                                <div id="x-axis-calls"
+                                    style="height:30px; display:flex; justify-content:space-between; padding-left:10px; margin-top:5px; font-size:0.75rem; color:var(--text-secondary);">
+                                    <!-- Dates -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chart 2: AHT -->
+                    <div class="glass-panel full-width-panel" style="padding: 1.5rem;">
+                        <h3>AHT (Ortalama İşlem Süresi) Trendi</h3>
+                        <div class="chart-layout" style="display:flex; height: 250px;">
+                            <div class="y-axis" id="y-axis-aht"
+                                style="width: 50px; display:flex; flex-direction:column; justify-content:space-between; text-align:right; padding-right:10px; font-size:0.8rem; color:var(--text-secondary); border-right:1px solid rgba(255,255,255,0.1);">
+                            </div>
+                            <div class="x-chart-area" style="flex:1; display:flex; flex-direction:column;">
+                                <div id="chart-aht"
+                                    style="flex:1; display:flex; align-items:flex-end; gap:4px; padding-left:10px;">
+                                </div>
+                                <div id="x-axis-aht"
+                                    style="height:30px; display:flex; justify-content:space-between; padding-left:10px; margin-top:5px; font-size:0.75rem; color:var(--text-secondary);">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+                        <!-- Chart 3: SL -->
+                        <div class="glass-panel" style="padding: 1.5rem;">
+                            <h3>Hizmet Seviyesi (SL%)</h3>
+                            <div class="chart-layout" style="display:flex; height: 200px;">
+                                <div class="y-axis" id="y-axis-sl"
+                                    style="width: 40px; display:flex; flex-direction:column; justify-content:space-between; text-align:right; padding-right:10px; font-size:0.8rem; color:var(--text-secondary); border-right:1px solid rgba(255,255,255,0.1);">
+                                </div>
+                                <div class="x-chart-area" style="flex:1; display:flex; flex-direction:column;">
+                                    <div id="chart-sl"
+                                        style="flex:1; display:flex; align-items:flex-end; gap:2px; padding-left:10px;">
+                                    </div>
+                                    <!-- Simplified X Axis -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chart 4: Agents -->
+                        <div class="glass-panel" style="padding: 1.5rem;">
+                            <h3>Temsilci Sayısı</h3>
+                            <div class="chart-layout" style="display:flex; height: 200px;">
+                                <div class="y-axis" id="y-axis-agents"
+                                    style="width: 40px; display:flex; flex-direction:column; justify-content:space-between; text-align:right; padding-right:10px; font-size:0.8rem; color:var(--text-secondary); border-right:1px solid rgba(255,255,255,0.1);">
+                                </div>
+                                <div class="x-chart-area" style="flex:1; display:flex; flex-direction:column;">
+                                    <div id="chart-agents"
+                                        style="flex:1; display:flex; align-items:flex-end; gap:2px; padding-left:10px;">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
@@ -186,9 +265,12 @@
                     <div class="table-header-actions">
                         <h2>Son 1 Yıllık Veri Girişi</h2>
                         <div class="actions">
-                            <button class="btn-secondary" id="reset-history">Temizle</button>
-                            <button class="btn-secondary" id="load-sample-data">Örnek Veri</button>
-                            <button class="btn-primary" id="save-history">Kaydet</button>
+                            <div style="display:inline-flex; align-items:center; gap:10px;">
+                                <input type="file" id="excel-upload" accept=".xlsx, .xls" style="display:none;" />
+                                <button class="btn-secondary"
+                                    onclick="document.getElementById('excel-upload').click()">📂 Excel Yükle</button>
+                                <button class="btn-primary" id="save-history">Kaydet</button>
+                            </div>
                         </div>
                     </div>
                     <div class="table-container">

@@ -15,7 +15,6 @@ let state = {
 document.addEventListener('DOMContentLoaded', () => {
     loadHistory();
     initTabs();
-    initCalculator(); // The manual calculator logic
     initHistoryTable();
     initPlanning(); // The forecast logic
     renderDashboard();
@@ -55,13 +54,54 @@ function initTabs() {
 
 // --- Data Management ---
 function loadHistory() {
-    const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
-    if (stored) {
-        try {
-            state.historyData = JSON.parse(stored);
-        } catch (e) {
-            console.error('Data load error', e);
+    state.historyData = {}; // Start fresh
+    const keysToCheck = [CONFIG.STORAGE_KEY, 'wfm_history_data_v2', 'wfm_history_data']; // Priority order
+    let totalLoaded = 0;
+
+    console.log('Starting comprehensive data recovery...');
+
+    // Diagnostic: Tell user what keys exist
+    const allKeys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        allKeys.push(localStorage.key(i));
+    }
+    // Only alert if we suspect data loss issues (which we do now)
+    if (allKeys.length > 0) {
+        console.log("Current LocalStorage Keys:", allKeys);
+        // alert("Bulunan Kayıt Anahtarları: " + allKeys.join(", ")); // Uncomment to debug on screen
+    }
+
+    keysToCheck.forEach(key => {
+        const raw = localStorage.getItem(key);
+        if (raw && raw !== '{}' && raw !== 'null') {
+            try {
+                const parsed = JSON.parse(raw);
+                const count = Object.keys(parsed).length;
+                if (count > 0) {
+                    console.log(`Found ${count} records in ${key}. Merging...`);
+                    // Merge strategy: Spread new data over existing. 
+                    // This creates a union of all data found across all keys.
+                    state.historyData = { ...state.historyData, ...parsed };
+                    totalLoaded += count; // Just for counting, true unique count is Object.keys(state.historyData).length
+                }
+            } catch (e) {
+                console.error(`Error parsing ${key}:`, e);
+            }
         }
+    });
+
+    const finalCount = Object.keys(state.historyData).length;
+
+    if (finalCount > 0) {
+        console.log(`Recovery complete. Total unique merged records: ${finalCount}`);
+        // Save the merged state back to the primary key to consolidate immediately
+        localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(state.historyData));
+
+        // Let user know if we recovered something significant
+        // alert(`Data Recovery Report: ${finalCount} records found and merged.`);
+        renderDashboard();
+    } else {
+        console.warn('Scanned all keys but found no data at all.');
     }
 }
 
@@ -93,26 +133,61 @@ function generateForecast() {
 
     tbody.innerHTML = '';
 
-    // Start from December 1st (Month 11)
-    const startDate = new Date(new Date().getFullYear(), 11, 1);
+    // Start from January 1, 2025 (Month 0)
+    const startDate = new Date(2025, 0, 1);
 
     let totalCalls = 0;
     let totalAgents = 0;
     let dayCount = 0;
+    let perfectAccuracyCount = 0;
 
-    // Generate for 31 days (Dec 1 - Dec 31)
-    for (let i = 0; i < 31; i++) {
+    // Generate for Jan 1, 2025 to Jan 31, 2026 (396 days)
+    for (let i = 0; i < 396; i++) {
         const d = new Date(startDate);
         d.setDate(startDate.getDate() + i);
 
+        const isoDate = getLocalDateKey(d);
         const dateStr = d.toLocaleDateString('tr-TR');
         const dayName = d.toLocaleDateString('tr-TR', { weekday: 'long' });
+
+        // Retrieve Actual Data
+        const actualData = state.historyData[isoDate] || {};
+        const actualCalls = parseInt(actualData.calls) || 0;
+        const actualAgents = parseInt(actualData.agents) || 0;
+        const actualSl = parseInt(actualData.sl) || 0;
 
         // Prediction Logic
         const prediction = predictForWeekday(d.getDay());
 
         // Calculate Requirement
         const result = calculateRequirement(prediction.calls, prediction.aht, targetSL);
+
+        // Difference Calculation (Actual - Required)
+        const diff = actualAgents - result.requiredAgents;
+        let diffClass = '';
+        let diffStr = '-';
+        if (actualAgents > 0) {
+            diffStr = diff > 0 ? `+${diff}` : `${diff}`;
+            diffClass = diff >= 0 ? 'text-success' : 'text-danger';
+        }
+
+        // Success Rate Calculation (Realization %)
+        let successRateStr = '-';
+        let rate = 0;
+        if (result.requiredAgents > 0 && actualAgents > 0) {
+            rate = (actualAgents / result.requiredAgents);
+            successRateStr = '%' + (rate * 100).toFixed(0);
+
+            // Check for Perfect Accuracy (100% - 105%)
+            // 1.00 <= rate <= 1.05
+            if (rate >= 1.00 && rate <= 1.05) {
+                perfectAccuracyCount++;
+                successRateStr += ' ⭐'; // Mark visual indicator
+            }
+        }
+
+        // Inline styles for difference
+        const diffStyle = diff >= 0 ? 'color: var(--success-color); font-weight:bold;' : 'color: var(--danger-color); font-weight:bold;';
 
         // Visuals
         const row = document.createElement('tr');
@@ -122,9 +197,12 @@ function generateForecast() {
             <td>${dateStr}</td>
             <td class="day-cell">${dayName}</td>
             <td>${Math.round(prediction.calls).toLocaleString()}</td>
-            <td>${Math.round(prediction.aht)} sn</td>
+            <td style="color:var(--text-secondary);">${actualCalls > 0 ? actualCalls.toLocaleString() : '-'}</td>
             <td style="font-weight:bold; color:var(--accent-color); font-size:1.1rem;">${result.requiredAgents}</td>
-            <td>${result.tve.toFixed(2)}</td>
+            <td style="font-weight:bold;">${actualAgents > 0 ? actualAgents : '-'}</td>
+            <td style="${actualAgents > 0 ? diffStyle : ''}">${actualAgents > 0 ? diffStr : '-'}</td>
+            <td style="font-weight:bold;">${successRateStr}</td>
+            <td>${actualSl > 0 ? '%' + actualSl : '-'}</td>
         `;
         tbody.appendChild(row);
 
@@ -135,11 +213,143 @@ function generateForecast() {
 
     // Update Summary
     document.getElementById('forecast-summary').style.display = 'grid';
-    document.getElementById('total-forecast-calls').textContent = Math.round(totalCalls).toLocaleString();
+
+    // Calculate Average Monthly Calls (Daily Avg * 30)
+    const avgMonthlyCalls = dayCount ? (totalCalls / dayCount) * 30 : 0;
+    document.getElementById('total-forecast-calls').textContent = Math.round(avgMonthlyCalls).toLocaleString();
 
     // Average Daily Requirement
     const avgReq = dayCount ? Math.round(totalAgents / dayCount) : 0;
     document.getElementById('avg-required-agents').textContent = avgReq;
+
+    // Update Perfect Accuracy Count
+    document.getElementById('perfect-accuracy-days').textContent = perfectAccuracyCount;
+
+    // Perform Optimization Analysis
+    analyzeStaffing(targetSL);
+}
+
+// --- Agent Analysis Logic ---
+function analyzeStaffing(targetSL) {
+    const tbody = document.getElementById('recommendation-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const dayStats = {}; // { 1: { diffSum: 0, count: 0, slSum: 0, agentSum: 0 }, ... }
+
+    // Initialize stats
+    for (let i = 1; i <= 31; i++) {
+        dayStats[i] = { diffSum: 0, count: 0, slSum: 0, agentSum: 0 };
+    }
+
+    // Iterate through ALL history data
+    const keys = Object.keys(state.historyData);
+    keys.forEach(date => {
+        const d = state.historyData[date];
+        const calls = parseInt(d.calls) || 0;
+        const actualAgents = parseInt(d.agents) || 0;
+        const aht = parseInt(d.aht) || 0;
+        const talkTime = parseInt(d.talkTime) || 0;
+        const sl = parseFloat(d.sl) || 0;
+
+        // Skip if no volume or agents
+        if (calls <= 0 || actualAgents <= 0) return;
+
+        // Determine effective AHT
+        let effectiveAht = aht;
+        if (effectiveAht === 0 && talkTime > 0 && calls > 0) {
+            effectiveAht = (talkTime * 3600) / calls;
+        }
+        if (effectiveAht === 0) effectiveAht = 300; // Default fallback
+
+        // Calculate Requirement for that historical day
+        const req = calculateRequirement(calls, effectiveAht, targetSL);
+        const diff = actualAgents - req.requiredAgents;
+
+        // Group by Day of Month (1-31)
+        const dateObj = new Date(date);
+        const dayOfMonth = dateObj.getDate();
+
+        if (dayStats[dayOfMonth]) {
+            dayStats[dayOfMonth].diffSum += diff;
+            dayStats[dayOfMonth].slSum = (dayStats[dayOfMonth].slSum || 0) + sl;
+            dayStats[dayOfMonth].agentSum += actualAgents;
+            dayStats[dayOfMonth].count++;
+        }
+    });
+
+    let hasRecommendations = false;
+    const significantDays = [];
+
+    // Analyze Results
+    for (let i = 1; i <= 31; i++) {
+        const stat = dayStats[i];
+        if (stat.count < 2) continue; // Need at least 2 data points for a trend
+
+        const avgDiff = stat.diffSum / stat.count;
+        const avgSl = (stat.slSum || 0) / stat.count;
+        const avgAgents = stat.agentSum / stat.count;
+
+        let status = 'Dengeli';
+        let color = 'var(--text-secondary)';
+        let recommendation = 'Mevcut seviye uygun.';
+
+        // Thresholds for recommendations
+        if (avgDiff >= 1 && avgSl >= 86) {
+            status = 'Fazla Temsilci';
+            color = 'var(--danger-color)';
+            recommendation = `Ortalama **${Math.round(avgDiff)}** kişi azaltılabilir.`;
+            significantDays.push({ day: i, type: 'surplus', amount: avgDiff });
+        } else if (avgDiff <= -0.5) {
+            status = 'Eksik Temsilci';
+            color = 'var(--accent-color)';
+            recommendation = `Ortalama **${Math.abs(Math.round(avgDiff))}** kişi artırılmalı.`;
+            significantDays.push({ day: i, type: 'deficit', amount: Math.abs(avgDiff) });
+        } else {
+            // Balanced, skip row to avoid clutter? Or show OK? 
+            // Let's only show significant items to keep it clean.
+            continue;
+        }
+
+        hasRecommendations = true;
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>Ayın ${i}. Günü</td>
+            <td style="color:${color}; font-weight:bold;">${status}</td>
+            <td>${Math.round(avgAgents)}</td>
+            <td>${Math.round(avgDiff) > 0 ? '+' : ''}${Math.round(avgDiff)}</td>
+            <td>%${avgSl.toFixed(1)}</td>
+            <td>${recommendation}</td>
+        `;
+        tbody.appendChild(row);
+    }
+
+    // Cross-Shift Recommendations (Münakale)
+    if (significantDays.length > 0) {
+        const surpluses = significantDays.filter(d => d.type === 'surplus');
+        const deficits = significantDays.filter(d => d.type === 'deficit');
+
+        if (surpluses.length > 0 && deficits.length > 0) {
+            // Sort by magnitude
+            surpluses.sort((a, b) => b.amount - a.amount);
+            deficits.sort((a, b) => b.amount - a.amount);
+
+            const row = document.createElement('tr');
+            row.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+            row.innerHTML = `
+                <td colspan="6" style="padding:1rem; text-align:left;">
+                    <strong>💡 Münakale Önerisi:</strong><br>
+                    Ayın <b>${surpluses[0].day}.</b> günündeki fazlalık, <b>${deficits[0].day}.</b> günündeki eksikliği kapatmak için kaydırılabilir.
+                </td>
+            `;
+            tbody.prepend(row);
+        }
+    }
+
+    if (!hasRecommendations) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:1rem;">Kayda değer bir sistemsel sapma tespit edilemedi.</td></tr>';
+    }
 }
 
 function predictForWeekday(dayIndex) {
@@ -182,9 +392,18 @@ function predictForWeekday(dayIndex) {
 function calculateRequirement(calls, aht, targetSL) {
     if (calls <= 0 || aht <= 0) return { requiredAgents: 0, tve: 0 };
 
-    // Advanced Traffic Calculation (Operating Hours)
-    const effectiveSeconds = CONFIG.OPERATING_HOURS * 3600;
-    const traffic = (calls * aht) / effectiveSeconds;
+    // Traffic Intensity Calculation
+    // Erlang C needs traffic in "Erlangs" (Call Minutes / Interval Minutes)
+    // If input is Daily Calls, we need to estimate Peak Hour Traffic.
+    // Typical Rule of Thumb: ~10-15% of daily volume occurs in the peak hour.
+    // Let's assume 12% peak hour factor (0.12).
+
+    // Peak Hour Calls = calls * 0.12
+    // Traffic in Erlangs = (PeakCalls * AHT) / 3600
+
+    const peakHourRatio = 0.14; // Slightly aggressive peak factor
+    const peakCalls = calls * peakHourRatio;
+    const traffic = (peakCalls * aht) / 3600;
 
     if (traffic <= 0) return { requiredAgents: 0, tve: 0 };
 
@@ -192,7 +411,7 @@ function calculateRequirement(calls, aht, targetSL) {
     let sl = 0;
     const slTime = 20;
 
-    // Search
+    // Search for required agents
     for (let k = 0; k < 5000; k++) {
         sl = calculateServiceLevel(traffic, agents, slTime, aht);
         if (sl * 100 >= targetSL) break;
@@ -200,8 +419,12 @@ function calculateRequirement(calls, aht, targetSL) {
     }
 
     const tve = (aht * sl) / agents;
-    // Shrinkage 30%
-    const netAgents = Math.ceil(agents / 0.7);
+
+    // Shrinkage & Efficiency Buffer
+    // Real world agents aren't 100% productive every second of the hour on phone.
+    // Plus breaks, training, shrinkage (sick, etc).
+    // Let's assume net availability is ~70%.
+    const netAgents = Math.ceil(agents / 0.70); // More realistic shrinkage
 
     return { requiredAgents: netAgents, tve };
 }
@@ -237,80 +460,223 @@ function factorial(n) {
 
 // --- Dashboard Logic ---
 function renderDashboard() {
-    const entries = Object.values(state.historyData).filter(d => (parseInt(d.calls) || 0) > 0);
+    console.log("Rendering Dashboard...");
+    const allKeys = Object.keys(state.historyData).sort();
 
-    let totalCalls = 0;
-    let totalAhtWeighted = 0;
-    let totalSlWeighted = 0;
-    let totalAgents = 0;
-    let count = 0;
+    // Debug: Check keys
+    console.log(`Found ${allKeys.length} total history records.`);
+    if (allKeys.length > 0) {
+        console.log("Sample Keys:", allKeys.slice(-5));
+        console.log("Sample Data (Last):", state.historyData[allKeys[allKeys.length - 1]]);
+    }
 
-    entries.forEach(d => {
+    // Filter to only days with data (calls > 0)
+    const keysWithData = allKeys.filter(date => {
+        const d = state.historyData[date];
+        return (parseInt(d.calls) || 0) > 0;
+    });
+
+    // Use the last 30 days that actually have data
+    const sortedKeys = keysWithData.slice(-30);
+    const chartData = [];
+
+    sortedKeys.forEach(date => {
+        const d = state.historyData[date];
         const calls = parseInt(d.calls) || 0;
         const agents = parseInt(d.agents) || 0;
-        const talkTimeHours = parseInt(d.talkTime) || 0;
-        const sl = parseInt(d.sl) || 0;
+        const sl = parseFloat(d.sl) || 0;
+        const talkTimeHours = parseInt(d.talkTime) || 0; // Assuming input is hours? Or seconds?
+        // Note: In handleExcelUpload we treated it as simple int.
 
         let aht = parseInt(d.aht) || 0;
-        if (aht === 0 && talkTimeHours > 0 && calls > 0) aht = (talkTimeHours * 3600) / calls;
+        // Auto-calculate AHT if missing but we have TalkTime(hours) and Calls
+        // If talkTime is hours: (talkTime * 3600) / calls
+        if (aht === 0 && talkTimeHours > 0 && calls > 0) {
+            aht = Math.round((talkTimeHours * 3600) / calls);
+        }
+
+        chartData.push({
+            date: date,
+            calls: calls,
+            aht: aht,
+            sl: sl,
+            agents: agents
+        });
+    });
+
+    console.log("Chart Data Prepared:", chartData);
+
+    // KPI Aggregates (using ALL data with calls > 0)
+    // We need keys to determine Day of Week
+    const allValidKeys = Object.keys(state.historyData).filter(k => (parseInt(state.historyData[k].calls) || 0) > 0);
+
+    let totalCalls = 0;
+    let totalAgents = 0;
+    let totalAhtWeighted = 0;
+    let totalSlWeighted = 0;
+    let totalTveWeighted = 0;
+
+    // Weekly Breakdown Stats
+    let weekdayCalls = 0, weekdayCount = 0;
+    let satCalls = 0, satCount = 0;
+    let sunCalls = 0, sunCount = 0;
+
+    allValidKeys.forEach(key => {
+        const d = state.historyData[key];
+        const calls = parseInt(d.calls) || 0;
+        const agents = parseInt(d.agents) || 0;
+        const sl = parseFloat(d.sl) || 0;
+        const talkTimeHours = parseInt(d.talkTime) || 0;
+        let aht = parseInt(d.aht) || 0;
+
+        if (aht === 0 && talkTimeHours > 0 && calls > 0) {
+            aht = (talkTimeHours * 3600) / calls;
+        }
 
         let tve = 0;
         if (agents > 0) tve = (aht * (sl / 100)) / agents;
 
         totalCalls += calls;
+        totalAgents += agents;
         totalAhtWeighted += (calls * aht);
         totalSlWeighted += (calls * sl);
-        totalAgents += agents;
+        if (tve > 0) totalTveWeighted += (calls * tve);
 
-        count++;
+        // Day Breakdown
+        const dateObj = new Date(key);
+        const dayIdx = dateObj.getDay(); // 0=Sun, 6=Sat
+
+        if (dayIdx === 0) {
+            sunCalls += calls;
+            sunCount++;
+        } else if (dayIdx === 6) {
+            satCalls += calls;
+            satCount++;
+        } else {
+            weekdayCalls += calls;
+            weekdayCount++;
+        }
     });
 
+    const count = allValidKeys.length;
     const avgCalls = count ? (totalCalls / count) : 0;
     const avgAht = totalCalls ? (totalAhtWeighted / totalCalls) : 0;
     const avgSl = totalCalls ? (totalSlWeighted / totalCalls) : 0;
     const avgAgents = count ? (totalAgents / count) : 0;
+    const avgTve = totalCalls ? (totalTveWeighted / totalCalls) : 0;
 
-    // Avg TVE
-    const tveArr = entries.map(d => {
-        let a = parseInt(d.aht) || 0;
-        if (a === 0 && d.talkTime && d.calls) a = (d.talkTime * 3600) / d.calls;
-        let s = parseInt(d.sl) || 0;
-        let ag = parseInt(d.agents) || 1;
-        return (a * (s / 100)) / ag;
+    // Breakdown Averages
+    const avgWeekday = weekdayCount ? (weekdayCalls / weekdayCount) : 0;
+    const avgSat = satCount ? (satCalls / satCount) : 0;
+    const avgSun = sunCount ? (sunCalls / sunCount) : 0;
+
+    // Update KPI Cards
+    if (document.getElementById('dash-avg-calls')) document.getElementById('dash-avg-calls').textContent = Math.round(avgCalls).toLocaleString();
+    if (document.getElementById('dash-avg-aht')) document.getElementById('dash-avg-aht').textContent = Math.round(avgAht) + ' sn';
+    if (document.getElementById('dash-avg-tve')) document.getElementById('dash-avg-tve').textContent = avgTve.toFixed(2);
+    if (document.getElementById('dash-avg-sl')) document.getElementById('dash-avg-sl').textContent = '%' + avgSl.toFixed(1);
+    if (document.getElementById('dash-avg-agents')) document.getElementById('dash-avg-agents').textContent = Math.round(avgAgents);
+
+    // Update Weekly Breakdown Cards
+    if (document.getElementById('dash-weekday-calls')) document.getElementById('dash-weekday-calls').textContent = Math.round(avgWeekday).toLocaleString();
+    if (document.getElementById('dash-sat-calls')) document.getElementById('dash-sat-calls').textContent = Math.round(avgSat).toLocaleString();
+    if (document.getElementById('dash-sun-calls')) document.getElementById('dash-sun-calls').textContent = Math.round(avgSun).toLocaleString();
+
+    // Render Charts
+    renderChart('chart-calls', 'y-axis-calls', 'x-axis-calls', chartData, 'calls', '#4f46e5', 'Adet');
+    renderChart('chart-aht', 'y-axis-aht', 'x-axis-aht', chartData, 'aht', '#10b981', 'Sn');
+    renderChart('chart-sl', 'y-axis-sl', null, chartData, 'sl', '#f59e0b', '%');
+    renderChart('chart-agents', 'y-axis-agents', null, chartData, 'agents', '#ec4899', 'Kişi');
+}
+
+function renderChart(chartId, yAxisId, xAxisId, data, key, color, unit) {
+    const container = document.getElementById(chartId);
+    const yAxisContainer = document.getElementById(yAxisId);
+    const xAxisContainer = xAxisId ? document.getElementById(xAxisId) : null;
+
+    if (!container) return;
+
+    container.innerHTML = '';
+    if (yAxisContainer) yAxisContainer.innerHTML = '';
+    if (xAxisContainer) xAxisContainer.innerHTML = '';
+
+    if (data.length === 0) {
+        container.innerHTML = '<div style="width:100%; text-align:center; color:var(--text-secondary); padding-top:20px;">Veri Yok</div>';
+        return;
+    }
+
+    // Find Max Value safely
+    const values = data.map(d => d[key]);
+    const rawMax = Math.max(...values, 10); // Default to 10 if all are 0
+
+    // Prevent Infinity/NaN
+    const safeMax = isFinite(rawMax) ? rawMax : 100;
+
+    // Nice number rounding
+    const magnitude = Math.pow(10, Math.floor(Math.log10(safeMax)));
+    const normalized = safeMax / magnitude;
+    let niceMultiplier;
+
+    if (normalized <= 1) niceMultiplier = 1;
+    else if (normalized <= 2) niceMultiplier = 2;
+    else if (normalized <= 5) niceMultiplier = 5;
+    else niceMultiplier = 10;
+
+    const maxValue = niceMultiplier * magnitude;
+
+    // Draw Y Axis
+    if (yAxisContainer) {
+        yAxisContainer.innerHTML = `
+            <div>${maxValue.toLocaleString()}</div>
+            <div>${(maxValue * 0.75).toLocaleString()}</div>
+            <div>${(maxValue * 0.5).toLocaleString()}</div>
+            <div>${(maxValue * 0.25).toLocaleString()}</div>
+            <div>0</div>
+        `;
+    }
+
+    // Draw Bars
+    data.forEach((d, index) => {
+        const val = d[key] || 0;
+        const height = (val / maxValue) * 100;
+
+        const bar = document.createElement('div');
+        bar.className = 'dash-bar';
+        bar.style.height = `${Math.min(height, 100)}%`; // Cap at 100%
+        bar.style.backgroundColor = color;
+        bar.style.opacity = '0.8';
+        bar.style.flex = '1';
+        bar.title = `${d.date}: ${val} ${unit}`;
+
+        bar.onmouseover = () => bar.style.opacity = '1';
+        bar.onmouseout = () => bar.style.opacity = '0.8';
+
+        container.appendChild(bar);
     });
-    const avgTve = tveArr.length ? tveArr.reduce((a, b) => a + b, 0) / tveArr.length : 0;
 
-    const elCalls = document.getElementById('dash-avg-calls');
-    if (elCalls) elCalls.textContent = Math.round(avgCalls).toLocaleString();
+    // X-Axis
+    if (xAxisContainer) {
+        data.forEach((d, index) => {
+            const labelBox = document.createElement('div');
+            labelBox.style.flex = '1';
+            labelBox.style.textAlign = 'center';
+            labelBox.style.fontSize = '0.7rem';
+            labelBox.style.overflow = 'hidden';
+            labelBox.style.whiteSpace = 'nowrap';
 
-    const elAht = document.getElementById('dash-avg-aht');
-    if (elAht) elAht.textContent = Math.round(avgAht) + ' sn';
-
-    const elTve = document.getElementById('dash-avg-tve');
-    if (elTve) elTve.textContent = avgTve.toFixed(2);
-
-    const elSl = document.getElementById('dash-avg-sl');
-    if (elSl) elSl.textContent = '%' + avgSl.toFixed(1);
-
-    const elAgents = document.getElementById('dash-avg-agents');
-    if (elAgents) elAgents.textContent = Math.round(avgAgents);
-
-    // Chart
-    const container = document.getElementById('history-chart-container');
-    if (container) {
-        container.innerHTML = '';
-        const sortedKeys = Object.keys(state.historyData).sort().slice(-30);
-        const maxCalls = Math.max(...sortedKeys.map(k => parseInt(state.historyData[k].calls) || 0), 100);
-
-        sortedKeys.forEach(date => {
-            const data = state.historyData[date];
-            const calls = parseInt(data.calls) || 0;
-            const height = (calls / maxCalls) * 100;
-            const bar = document.createElement('div');
-            bar.className = 'dash-bar';
-            bar.style.height = `${height}%`;
-            bar.title = `${date}: ${calls} calls`;
-            container.appendChild(bar);
+            // Smart X-Axis Labeling
+            const step = Math.ceil(data.length / 6);
+            if (index % step === 0) {
+                const dateParts = d.date.split('-');
+                if (dateParts.length === 3) {
+                    labelBox.textContent = `${dateParts[1]}/${dateParts[2]}`; // MM/DD
+                } else {
+                    labelBox.textContent = d.date;
+                }
+            } else {
+                labelBox.innerHTML = '&nbsp;';
+            }
+            xAxisContainer.appendChild(labelBox);
         });
     }
 }
@@ -350,7 +716,7 @@ function initHistoryTable() {
         if (e.target.classList.contains('table-input')) {
             const date = e.target.dataset.date;
             const field = e.target.dataset.field;
-            let value = e.target.value;
+            const value = e.target.value;
 
             if (!state.historyData[date]) state.historyData[date] = {};
             state.historyData[date][field] = value;
@@ -358,72 +724,137 @@ function initHistoryTable() {
     });
 
     document.getElementById('save-history').addEventListener('click', saveHistory);
-    document.getElementById('reset-history').addEventListener('click', clearHistory);
 
-    document.getElementById('load-sample-data').addEventListener('click', () => {
-        // Generate mock data
-        for (let k = 0; k < 60; k++) {
-            const d = new Date();
-            d.setDate(today.getDate() - k);
-            const iso = getLocalDateKey(d);
-            const isWeekend = (d.getDay() === 0 || d.getDay() === 6);
-            if (!state.historyData[iso]) state.historyData[iso] = {};
+    // Excel Upload Logic
+    document.getElementById('excel-upload').addEventListener('change', handleExcelUpload);
+}
 
-            state.historyData[iso].calls = isWeekend ? 800 + Math.floor(Math.random() * 400) : 2500 + Math.floor(Math.random() * 1000);
-            // Hours
-            state.historyData[iso].talkTime = Math.floor((state.historyData[iso].calls * (180 + Math.random() * 40)) / 3600);
-            state.historyData[iso].sl = 70 + Math.floor(Math.random() * 25);
-            state.historyData[iso].agents = isWeekend ? 10 : 35;
+function handleExcelUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+
+        // Get first sheet
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+
+        // Convert to JSON
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+            raw: false, // Parse dates as strings if possible
+            dateNF: 'yyyy-mm-dd',
+            defval: ''
+        });
+
+        console.log("Excel Raw Data (First 3 rows):", jsonData.slice(0, 3));
+
+        if (jsonData.length === 0) {
+            alert("Excel dosyasında veri bulunamadı.");
+            return;
         }
-        initHistoryTable();
-        alert('Son 2 ay için örnek veriler yüklendi.');
-    });
-}
 
-// --- Manual Calculator (Existing Logic) ---
-function initCalculator() {
-    const ids = ['calls-range', 'calls', 'aht-range', 'aht'];
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', syncManualCalc);
-    });
-    syncManualCalc();
-}
+        let importedCount = 0;
 
-function syncManualCalc() {
-    document.getElementById('calls').value = document.getElementById('calls-range').value;
-    document.getElementById('aht').value = document.getElementById('aht-range').value;
+        jsonData.forEach((row, index) => {
+            // Helper to find value by fuzzy key
+            const getValue = (keywords) => {
+                const keys = Object.keys(row);
+                for (const k of keys) {
+                    const normKey = k.toLowerCase().replace(/\s+/g, '').trim(); // Remove spaces, lowercase
+                    for (const keyword of keywords) {
+                        if (normKey.includes(keyword)) return row[k];
+                    }
+                }
+                return null;
+            };
 
-    const calls = parseInt(document.getElementById('calls').value);
-    const aht = parseInt(document.getElementById('aht').value);
+            // Debug mapping for first row
+            if (index === 0) {
+                console.log(" debug: Inspecting first row keys:", Object.keys(row));
+            }
 
-    // Manual calc assumes 24h spread for basic Erlang
-    // Or should we use the new Operating Hours logic?
-    // User wants "Anlık Hesaplama Simülatörü" likely to be standard.
-    // Let's stick to standard 24h for the simple slider tool unless requested otherwise.
-    // Or align it with Forecast for consistency?
-    // Let's align it with a milder factor (e.g. 18h) or keep 24h. 
-    // Keeping 24h (86400) for now as it matches the labels "24 Saat (Günlük)".
+            // Fuzzy Match Strategies
+            let dateStr = getValue(['tarih', 'date', 'gün', 'day']);
+            let calls = getValue(['çağrı', 'cagri', 'call', 'inbound', 'vol']);
+            let aht = getValue(['aht', 'süre', 'time', 'handle']);
+            let agents = getValue(['temsilci', 'agent', 'personel', 'kisi']);
+            let sl = getValue(['sl', 'service', 'hizmet', 'level', 'seviye']);
+            let talkTime = getValue(['talk', 'görüşme', 'konusma']);
 
-    const res = calculateRequirementSimple(calls, aht, 80);
+            if (index === 0) {
+                console.log(" debug Mapped Values:", { dateStr, calls, aht, agents, sl });
+            }
 
-    document.getElementById('req-agents').textContent = res.requiredAgents;
-    const traff = (calls * aht) / 86400;
-    const sl = calculateServiceLevel(traff, Math.ceil(res.requiredAgents * 0.7), 20, aht);
-    document.getElementById('est-sl').textContent = '%' + (sl * 100).toFixed(1);
-}
+            if (dateStr) {
+                // Try to parse date string to YYYY-MM-DD
+                let d;
 
-function calculateRequirementSimple(calls, aht, targetSL) {
-    // Simple 24h calc for the slider tool
-    const traffic = (calls * aht) / 86400;
-    if (traffic <= 0) return { requiredAgents: 0 };
-    let agents = Math.floor(traffic) + 1;
-    let sl = 0;
-    for (let k = 0; k < 1000; k++) {
-        sl = calculateServiceLevel(traffic, agents, 20, aht);
-        if (sl * 100 >= targetSL) break;
-        agents++;
-    }
-    const netAgents = Math.ceil(agents / 0.7);
-    return { requiredAgents: netAgents };
+                // Debug date parsing for first row
+                if (index === 0) console.log(" debug: First row dateStr:", dateStr);
+
+                // If it looks like Excel Serial Date (integer > 20000)
+                if (!isNaN(dateStr) && parseInt(dateStr) > 20000) {
+                    d = new Date((parseInt(dateStr) - 25569) * 86400 * 1000);
+                } else if (typeof dateStr === 'string') {
+                    // Handling DD.MM.YYYY format
+                    if (dateStr.match(/^\d{1,2}\.\d{1,2}\.\d{4}$/)) {
+                        const [day, month, year] = dateStr.split('.');
+                        d = new Date(`${year}-${month}-${day}`);
+                    }
+                    // Handling DD/MM/YYYY format
+                    else if (dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+                        const [day, month, year] = dateStr.split('/');
+                        d = new Date(`${year}-${month}-${day}`);
+                    }
+                    else {
+                        d = new Date(dateStr);
+                    }
+                } else {
+                    d = new Date(dateStr);
+                }
+
+                if (!isNaN(d.getTime())) {
+                    const isoDate = getLocalDateKey(d);
+
+                    if (!state.historyData[isoDate]) state.historyData[isoDate] = {};
+
+                    // Clean and Assign Numbers
+                    const cleanInt = (v) => {
+                        if (typeof v === 'string') return parseInt(v.replace(/[^0-9]/g, '')) || 0;
+                        return parseInt(v) || 0;
+                    };
+                    const cleanFloat = (v) => {
+                        if (typeof v === 'string') return parseFloat(v.replace(',', '.')) || 0;
+                        return parseFloat(v) || 0;
+                    };
+
+                    // Update only present fields
+                    if (calls) state.historyData[isoDate].calls = cleanInt(calls);
+                    if (agents) state.historyData[isoDate].agents = cleanInt(agents);
+                    if (sl) state.historyData[isoDate].sl = cleanFloat(sl);
+                    if (aht) state.historyData[isoDate].aht = cleanInt(aht);
+                    if (talkTime) state.historyData[isoDate].talkTime = cleanInt(talkTime);
+
+                    importedCount++;
+                } else {
+                    console.warn(`Row ${index}: Invalid Date parsed from "${dateStr}"`);
+                }
+            } else {
+                if (index < 5) console.warn(`Row ${index}: No Date column found. Keys present:`, Object.keys(row));
+            }
+        });
+
+        console.log(`Import finished. ${importedCount} records valid.`);
+        if (importedCount > 0) {
+            alert(`${importedCount} satır veri başarıyla yüklendi. Tablo güncelleniyor...`);
+            initHistoryTable();
+            renderDashboard();
+        } else {
+            alert("Veri okunamadı. Lütfen Excel başlıklarınızın (Tarih, Çağrı, AHT, vb.) doğru olduğundan emin olun.");
+        }
+    };
+    reader.readAsArrayBuffer(file);
 }

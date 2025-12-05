@@ -403,3 +403,38 @@ tr.weekend td.day-cell {
 .dash-bar:hover {
     filter: brightness(1.2);
 }
+
+/* Enhanced Chart Styles */
+.chart-layout {
+    display: flex;
+    width: 100%;
+}
+
+.y-axis {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding-right: 10px;
+    margin-right: 5px;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-align: right;
+    min-width: 40px;
+}
+
+.x-chart-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+.chart-legend {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
